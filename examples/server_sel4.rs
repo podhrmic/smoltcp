@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr};
 use smoltcp::iface::{EthernetInterfaceBuilder, NeighborCache};
 use smoltcp::socket::SocketSet;
-use smoltcp::socket::{UdpPacketBuffer, UdpSocket, UdpSocketBuffer};
+use smoltcp::socket::{UdpSocketBuffer, UdpSocket, UdpPacketMetadata};
 use smoltcp::time::Instant;
 use smoltcp::phy::ClientDevice;
 
@@ -20,12 +20,12 @@ fn main() {
 
     let neighbor_cache = NeighborCache::new(BTreeMap::new());
 
-    let udp1_rx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 64])]);
-    let udp1_tx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 128])]);
+    let udp1_rx_buffer = UdpSocketBuffer::new(vec![UdpPacketMetadata::empty()], vec![0; 64]);
+    let udp1_tx_buffer = UdpSocketBuffer::new(vec![UdpPacketMetadata::empty()], vec![0; 128]);
     let udp1_socket = UdpSocket::new(udp1_rx_buffer, udp1_tx_buffer);
 
-    let udp2_rx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 64])]);
-    let udp2_tx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 128])]);
+    let udp2_rx_buffer = UdpSocketBuffer::new(vec![UdpPacketMetadata::empty()], vec![0; 64]);
+    let udp2_tx_buffer = UdpSocketBuffer::new(vec![UdpPacketMetadata::empty()], vec![0; 128]);
     let udp2_socket = UdpSocket::new(udp2_rx_buffer, udp2_tx_buffer);
 
     let ethernet_addr = EthernetAddress([0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
