@@ -29,19 +29,19 @@ mod ref_;
 pub(crate) use self::meta::Meta as SocketMeta;
 
 #[cfg(feature = "socket-raw")]
-pub use self::raw::{PacketBuffer as RawPacketBuffer,
-                    SocketBuffer as RawSocketBuffer,
+pub use self::raw::{RawPacketMetadata,
+                    RawSocketBuffer,
                     RawSocket};
 
 #[cfg(all(feature = "socket-icmp", feature = "proto-ipv4"))]
-pub use self::icmp::{PacketBuffer as IcmpPacketBuffer,
-                     SocketBuffer as IcmpSocketBuffer,
+pub use self::icmp::{IcmpPacketMetadata,
+                     IcmpSocketBuffer,
                      Endpoint as IcmpEndpoint,
                      IcmpSocket};
 
 #[cfg(feature = "socket-udp")]
-pub use self::udp::{PacketBuffer as UdpPacketBuffer,
-                    SocketBuffer as UdpSocketBuffer,
+pub use self::udp::{UdpPacketMetadata,
+                    UdpSocketBuffer,
                     UdpSocket};
 
 #[cfg(feature = "socket-tcp")]

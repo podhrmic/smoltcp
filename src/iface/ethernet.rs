@@ -11,7 +11,7 @@ use wire::pretty_print::PrettyPrinter;
 use wire::{EthernetAddress, EthernetProtocol, EthernetFrame};
 use wire::{IpAddress, IpProtocol, IpRepr, IpCidr};
 #[cfg(feature = "proto-ipv6")]
-use wire::{Ipv6Packet, Ipv6Repr, IPV6_MIN_MTU};
+use wire::{Ipv6Address, Ipv6Packet, Ipv6Repr, IPV6_MIN_MTU};
 #[cfg(feature = "proto-ipv4")]
 use wire::{Ipv4Address, Ipv4Packet, Ipv4Repr, IPV4_MIN_MTU};
 #[cfg(feature = "proto-ipv4")]
@@ -130,7 +130,7 @@ impl<'b, 'c, DeviceT> InterfaceBuilder<'b, 'c, DeviceT>
     /// [ip_addrs].
     ///
     /// # Panics
-    /// This function panics if any of the addresses is not unicast.
+    /// This function panics if any of the addresses are not unicast.
     ///
     /// [ip_addrs]: struct.EthernetInterface.html#method.ip_addrs
     pub fn ip_addrs<T>(mut self, ip_addrs: T) -> InterfaceBuilder<'b, 'c, DeviceT>
@@ -267,10 +267,29 @@ impl<'b, 'c, DeviceT> Interface<'b, 'c, DeviceT>
         self.inner.ip_addrs.as_ref()
     }
 
+    /// Determine if the given `Ipv6Address` is the solicited node
+    /// multicast address for a IPv6 addresses assigned to the interface.
+    /// See [RFC 4291 § 2.7.1] for more details.
+    ///
+    /// [RFC 4291 § 2.7.1]: https://tools.ietf.org/html/rfc4291#section-2.7.1
+    #[cfg(feature = "proto-ipv6")]
+    pub fn has_solicited_node(&self, addr: Ipv6Address) -> bool {
+        self.inner.ip_addrs.iter().find(|cidr| {
+            match *cidr {
+                &IpCidr::Ipv6(cidr) if cidr.address() != Ipv6Address::LOOPBACK=> {
+                    // Take the lower order 24 bits of the IPv6 address and
+                    // append those bits to FF02:0:0:0:0:1:FF00::/104.
+                    addr.as_bytes()[14..] == cidr.address().as_bytes()[14..]
+                }
+                _ => false,
+            }
+        }).is_some()
+    }
+
     /// Update the IP addresses of the interface.
     ///
     /// # Panics
-    /// This function panics if any of the addresses is not unicast.
+    /// This function panics if any of the addresses are not unicast.
     pub fn update_ip_addrs<F: FnOnce(&mut ManagedSlice<'c, IpCidr>)>(&mut self, f: F) {
         f(&mut self.inner.ip_addrs);
         InterfaceInner::check_ip_addrs(&self.inner.ip_addrs)
@@ -503,6 +522,7 @@ impl<'b, 'c> InterfaceInner<'b, 'c> {
 
         // Ignore any packets not directed to our hardware address.
         if !eth_frame.dst_addr().is_broadcast() &&
+           !eth_frame.dst_addr().is_multicast() &&
                 eth_frame.dst_addr() != self.ethernet_addr {
             return Ok(Packet::None)
         }
@@ -677,7 +697,9 @@ impl<'b, 'c> InterfaceInner<'b, 'c> {
         #[cfg(feature = "socket-raw")]
         let handled_by_raw_socket = self.raw_socket_filter(sockets, &ip_repr, ip_payload);
 
-        if !ipv4_repr.dst_addr.is_broadcast() && !self.has_ip_addr(ipv4_repr.dst_addr) {
+        if !ipv4_repr.dst_addr.is_broadcast() &&
+           !ipv4_repr.dst_addr.is_multicast() &&
+           !self.has_ip_addr(ipv4_repr.dst_addr) {
             // Ignore IP packets not directed at us.
             return Ok(Packet::None)
         }
@@ -1055,6 +1077,39 @@ impl<'b, 'c> InterfaceInner<'b, 'c> {
                                Result<(EthernetAddress, Tx)>
         where Tx: TxToken
     {
+        if dst_addr.is_multicast() {
+            let b = dst_addr.as_bytes();
+            let hardware_addr =
+                match dst_addr {
+                    &IpAddress::Unspecified =>
+                        None,
+                    #[cfg(feature = "proto-ipv4")]
+                    &IpAddress::Ipv4(_addr) =>
+                        Some(EthernetAddress::from_bytes(&[
+                            0x01, 0x00,
+                            0x5e, b[1] & 0x7F,
+                            b[2], b[3],
+                        ])),
+                    #[cfg(feature = "proto-ipv6")]
+                    &IpAddress::Ipv6(_addr) =>
+                        Some(EthernetAddress::from_bytes(&[
+                            0x33, 0x33,
+                            b[12], b[13],
+                            b[14], b[15],
+                        ])),
+                    &IpAddress::__Nonexhaustive =>
+                        unreachable!()
+                };
+            match hardware_addr {
+                Some(hardware_addr) =>
+                    // Destination is multicast
+                    return Ok((hardware_addr, tx_token)),
+                None =>
+                    // Continue
+                    (),
+            }
+        }
+
         let dst_addr = self.route(dst_addr)?;
 
         match self.neighbor_cache.lookup(&dst_addr, timestamp) {
@@ -1365,15 +1420,15 @@ mod test {
     #[test]
     #[cfg(all(feature = "socket-udp", feature = "proto-ipv4"))]
     fn test_handle_udp_broadcast() {
-        use socket::{UdpPacketBuffer, UdpSocket, UdpSocketBuffer};
+        use socket::{UdpSocket, UdpSocketBuffer, UdpPacketMetadata};
         use wire::IpEndpoint;
 
         static UDP_PAYLOAD: [u8; 5] = [0x48, 0x65, 0x6c, 0x6c, 0x6f];
 
         let (iface, mut socket_set) = create_loopback();
 
-        let rx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 15])]);
-        let tx_buffer = UdpSocketBuffer::new(vec![UdpPacketBuffer::new(vec![0; 15])]);
+        let rx_buffer = UdpSocketBuffer::new(vec![UdpPacketMetadata::empty()], vec![0; 15]);
+        let tx_buffer = UdpSocketBuffer::new(vec![UdpPacketMetadata::empty()], vec![0; 15]);
 
         let udp_socket = UdpSocket::new(rx_buffer, tx_buffer);
 
@@ -1564,13 +1619,13 @@ mod test {
     #[test]
     #[cfg(all(feature = "socket-icmp", feature = "proto-ipv4"))]
     fn test_icmpv4_socket() {
-        use socket::{IcmpPacketBuffer, IcmpSocket, IcmpSocketBuffer, IcmpEndpoint};
+        use socket::{IcmpSocket, IcmpEndpoint, IcmpSocketBuffer, IcmpPacketMetadata};
         use wire::Icmpv4Packet;
 
         let (iface, mut socket_set) = create_loopback();
 
-        let rx_buffer = IcmpSocketBuffer::new(vec![IcmpPacketBuffer::new(vec![0; 24])]);
-        let tx_buffer = IcmpSocketBuffer::new(vec![IcmpPacketBuffer::new(vec![0; 24])]);
+        let rx_buffer = IcmpSocketBuffer::new(vec![IcmpPacketMetadata::empty()], vec![0; 24]);
+        let tx_buffer = IcmpSocketBuffer::new(vec![IcmpPacketMetadata::empty()], vec![0; 24]);
 
         let icmpv4_socket = IcmpSocket::new(rx_buffer, tx_buffer);
 
@@ -1625,6 +1680,21 @@ mod test {
                        Ok((&icmp_data[..],
                            IpAddress::Ipv4(Ipv4Address::new(0x7f, 0x00, 0x00, 0x02)))));
         }
+    }
+
+    #[test]
+    #[cfg(feature = "proto-ipv6")]
+    fn test_solicited_node_addrs() {
+        let (mut iface, _) = create_loopback();
+        let mut new_addrs = vec![IpCidr::new(IpAddress::v6(0xfe80, 0, 0, 0, 1, 2, 0, 2), 64),
+                                 IpCidr::new(IpAddress::v6(0xfe80, 0, 0, 0, 3, 4, 0, 0xffff), 64)];
+        iface.update_ip_addrs(|addrs| {
+            new_addrs.extend(addrs.to_vec());
+            *addrs = From::from(new_addrs);
+        });
+        assert!(iface.has_solicited_node(Ipv6Address::new(0xff02, 0, 0, 0, 0, 1, 0xff00, 0x0002)));
+        assert!(iface.has_solicited_node(Ipv6Address::new(0xff02, 0, 0, 0, 0, 1, 0xff00, 0xffff)));
+        assert!(!iface.has_solicited_node(Ipv6Address::new(0xff02, 0, 0, 0, 0, 1, 0xff00, 0x0001)));
     }
 
     #[test]
