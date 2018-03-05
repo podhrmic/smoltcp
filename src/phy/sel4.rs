@@ -51,7 +51,6 @@ fn sel4_eth_receive() -> io::Result<Vec<u8>> {
         // instead of dealing with the borrow checker, copy slice in to a vector
         let mut vec = Vec::new();
         vec.extend_from_slice(slice);
-        println!("sel4_eth_receive: Received buffer: {:?}",vec);
         Ok(vec)
     }
 }
@@ -80,7 +79,6 @@ impl<'a> Device<'a> for Sel4Device {
     fn receive(&'a mut self) -> Option<(Self::RxToken, Self::TxToken)> {
         match sel4_eth_receive() {
             Ok(buf) => {
-            	println!("Rust device receive: {} bytes",buf.len());
                 if buf.len() > 0 {
                     let rx = RxToken { buffer: buf };
                     let tx = TxToken {};
@@ -89,15 +87,13 @@ impl<'a> Device<'a> for Sel4Device {
                     None
                 }
             }
-            Err(err) => {
-            	println!("sel4 receive: {}", err);
+            Err(_err) => {
             	None
             }
         }
     }
 
     fn transmit(&'a mut self) -> Option<Self::TxToken> {
-    	println!(">>> somebody called transmit");
         Some(TxToken {})
     }
 }

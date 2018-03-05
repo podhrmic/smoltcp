@@ -80,7 +80,7 @@ impl<'a> Resettable for PacketBuffer<'a> {
 }
 
 /// An ICMPv4 packet ring buffer.
-pub type SocketBuffer<'a, 'b: 'a> = RingBuffer<'a, PacketBuffer<'b>>;
+pub type SocketBuffer<'a, 'b> = RingBuffer<'a, PacketBuffer<'b>>;
 
 /// An ICMPv4 socket
 ///
