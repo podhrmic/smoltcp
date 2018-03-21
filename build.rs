@@ -17,10 +17,17 @@ fn main() {
         .output()
         .expect("failed to execute process");
 
+  let out_dir = env::var("OUT_DIR").unwrap();
+  let _out = Command::new("cp")
+        .arg("libexternalfirewall.a")
+        .arg(out_dir + "/.")
+        .output()
+        .expect("failed to execute process");
+
   let out_dir = env::var("OUT_DIR").unwrap();		
   println!("cargo:rustc-link-search={}",out_dir);
   println!("cargo:rustc-link-lib=firewall");
-  println!("cargo:rustc-link-lib=server");		
-
+  println!("cargo:rustc-link-lib=server");
+  println!("cargo:rustc-link-lib=externalfirewall");
 }
 

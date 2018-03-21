@@ -42,7 +42,7 @@ fn main() {
 
     loop {
         let timestamp = Instant::now();
-        iface.poll(&mut sockets, timestamp).expect("poll error");
+        iface.poll(&mut sockets, timestamp).expect("server poll error");
 
         // udp:6969: respond "hello"
         {
