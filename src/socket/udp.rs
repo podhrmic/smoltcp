@@ -12,7 +12,6 @@ pub type UdpPacketMetadata = PacketMetadata<IpEndpoint>;
 /// A UDP packet ring buffer.
 pub type UdpSocketBuffer<'a, 'b> = PacketBuffer<'a, 'b, IpEndpoint>;
 
-/// A User Datagram Protocol socket.
 ///
 /// A UDP socket is bound to a specific endpoint, and owns transmit and receive
 /// packet buffers.
